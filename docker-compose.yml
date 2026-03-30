@@ -1,0 +1,222 @@
+services:
+  traefik:
+    image: traefik:v3.6.12
+    container_name: traefik
+    user: "0:0"
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+      - --providers.file.directory=/etc/traefik/conf   # watches traefik/conf/ for dynamic config
+      - --providers.file.watch=true                    # hot-reload on file changes (no restart needed)
+      - --api.dashboard=false
+      - --accesslog=true
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+      - --ping=true
+      - --ping.entrypoint=web
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+    ports:
+      - "${HOST_HTTP_PORT:-3000}:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/conf:/etc/traefik/conf:ro            # canary/weighted routing config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agent_network
+
+  app1:
+    build:
+      context: .
+      dockerfile: ./webapp/Dockerfile
+      args:
+        APP_DIR: webapp/frontend
+    image: sample-frontend:latest
+    # container_name intentionally omitted — allows: docker compose up -d --scale app1=3
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - API_URL=/app2
+      - APP_VERSION=stable
+      - APP_RELEASE=v1
+      - FEATURE_BANNER=false
+      - BASE_PATH=/app1
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/app1/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 20s
+    labels:
+      - traefik.enable=true
+      # Router rule is defined in traefik/conf/dynamic.yml (weighted canary setup)
+      - traefik.http.services.app1.loadbalancer.server.port=3000
+      - traefik.http.services.app1.loadbalancer.healthcheck.path=/app1/health
+      - traefik.http.services.app1.loadbalancer.healthcheck.interval=10s
+      - traefik.http.services.app1.loadbalancer.healthcheck.timeout=3s
+    networks:
+      - agent_network
+
+  # ---------------------------------------------------------------------------
+  # Canary service — receives a configurable % of frontend traffic.
+  # Start with:  docker compose build app1-canary && docker compose up -d app1-canary
+  # Then edit traefik/conf/dynamic.yml weights; Traefik hot-reloads the change.
+  # Scale down with: docker compose stop app1-canary
+  #   In production, point image to a pre-built v2 tag instead of rebuilding here.
+  # ---------------------------------------------------------------------------
+  app1-canary:
+    build:
+      context: .
+      dockerfile: ./webapp/Dockerfile
+      args:
+        APP_DIR: webapp/frontend
+    image: sample-frontend-canary:latest
+    # container_name omitted — allows: docker compose up -d --scale app1-canary=2
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - API_URL=/app2
+      - APP_VERSION=canary
+      - APP_RELEASE=v2
+      - FEATURE_BANNER=true
+      - BASE_PATH=/app1
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/app1/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 20s
+    labels:
+      - traefik.enable=true
+      # No router label — traffic reaches this service only via app1-weighted in dynamic.yml
+      - traefik.http.services.app1-canary.loadbalancer.server.port=3000
+      - traefik.http.services.app1-canary.loadbalancer.healthcheck.path=/app1/health
+      - traefik.http.services.app1-canary.loadbalancer.healthcheck.interval=10s
+      - traefik.http.services.app1-canary.loadbalancer.healthcheck.timeout=3s
+    networks:
+      - agent_network
+
+  app2:
+    build:
+      context: .
+      dockerfile: ./webapp/Dockerfile
+      args:
+        APP_DIR: webapp/api
+    image: sample-api:latest
+    container_name: app2
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - BASE_PATH=/app2
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/app2/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 20s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.app2.rule=(Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/app2`)
+      - traefik.http.routers.app2.entrypoints=web
+      - traefik.http.services.app2.loadbalancer.server.port=4000
+    networks:
+      - agent_network
+
+  app3:
+    build:
+      context: .
+      dockerfile: ./webapp/Dockerfile
+      args:
+        APP_DIR: webapp/dashboard
+    image: sample-dashboard:latest
+    container_name: app3
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - API_URL=/app2
+      - BASE_PATH=/app3
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/app3/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 20s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.app3.rule=(Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/app3`)
+      - traefik.http.routers.app3.entrypoints=web
+      - traefik.http.services.app3.loadbalancer.server.port=5000
+    networks:
+      - agent_network
+
+  azdevops-agent:
+    build:
+      context: .
+      args:
+        TARGETARCH: ${TARGETARCH}
+    image: ${IMAGE_REPO:-azdevopsdeploymentagent}:${VERSION}-${TARGETARCH}
+    container_name: azdevops-agent
+    restart: unless-stopped
+    profiles:
+      - agent
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - deploymentdevagent:/azagent
+    environment:
+      - AZP_URL=${AZP_URL}
+      - AZP_TOKEN=${AZP_TOKEN}
+      - AZP_PROJECT=${AZP_PROJECT}
+      - AZP_ENVIRONMENT=${AZP_ENVIRONMENT:-development}
+      - AZP_AGENT_NAME=${AZP_AGENT_NAME:-agent}
+    networks:
+      - agent_network
+
+volumes:
+  deploymentdevagent:
+    name: ${AGENT_VOLUME_NAME:-deploymentdevagent}
+
+networks:
+  agent_network:
+    driver: bridge
+

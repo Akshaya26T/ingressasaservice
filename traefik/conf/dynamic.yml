@@ -1,0 +1,73 @@
+# ===========================================================================
+# Traefik Dynamic Configuration — Weighted Canary / Load-Balanced Routing
+# ===========================================================================
+# This file hot-reloads automatically (--providers.file.watch=true).
+# Edit weights in-place to shift traffic with zero downtime / no restarts.
+#
+# Traffic weight semantics:
+#   weight: 0  — no traffic routed (safe to have backend stopped)
+#   weight: 1  — proportional share (1:9 ratio with stable = 10% canary)
+#   weight: 10 — full share (use to fully promote canary)
+#
+# ---------------------------------------------------------------------------
+# Canary Deployment Workflow
+# ---------------------------------------------------------------------------
+# 1. Scale stable instances:
+#      docker compose up -d --scale app1=3
+#
+# 2. Build & start canary (new image/version):
+#      docker compose build app1-canary
+#      docker compose up -d app1-canary
+#
+# 3. Route 10% to canary — edit weights below:
+#      app1:        weight: 9
+#      app1-canary: weight: 1
+#    (file hot-reloads; no restart needed)
+#
+# 4. Monitor. Gradually increase canary share (5/5, then 0/10).
+#
+# 5. Promote canary fully — set:
+#      app1:        weight: 0
+#      app1-canary: weight: 10
+#
+# 6. After validation, rebuild stable with new image, then scale down canary:
+#      docker compose stop app1-canary
+#    Reset weights back to: app1: 10, app1-canary: 0
+#    Rebuild stable: docker compose build app1 && docker compose up -d --scale app1=3
+# ---------------------------------------------------------------------------
+
+http:
+  routers:
+    root-redirect:
+      rule: "(Host(`localhost`) || Host(`127.0.0.1`)) && Path(`/`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-app1
+      service: noop@internal
+
+    app1:
+      rule: "(Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/app1`)"
+      entryPoints:
+        - web
+      service: app1-weighted
+
+  middlewares:
+    redirect-to-app1:
+      redirectRegex:
+        regex: "^https?://([^/]+)/?$"
+        replacement: "http://${1}/app1/"
+        permanent: false
+
+  services:
+    # -------------------------------------------------------------------------
+    # Weighted entry point — controls traffic split between stable and canary.
+    # Traefik auto-round-robins within each service across all running replicas.
+    # -------------------------------------------------------------------------
+    app1-weighted:
+      weighted:
+        services:
+          - name: app1@docker              # stable: all replicas load-balanced equally
+            weight: 9                      # ~90% when canary weight is 1; adjust as canary ramps
+          - name: app1-canary@docker       # canary: receives weight/(stable+canary) % traffic
+            weight: 1                      # 0 = disabled; set to 1 for ~10%, 5 for ~50%, etc.

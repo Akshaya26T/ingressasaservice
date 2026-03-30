@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sample Web App</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 40px 48px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 { color: #1a202c; font-size: 2rem; margin-bottom: 8px; }
+    p  { color: #4a5568; margin-bottom: 24px; }
+    .badge {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .badge-green  { background: #c6f6d5; color: #276749; }
+    .badge-yellow { background: #fefcbf; color: #744210; }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 28px;
+    }
+    .status-box {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .status-box h3 { font-size: 0.9rem; color: #718096; margin-bottom: 6px; }
+    #api-status { font-weight: 600; }
+    .muted { color: #718096; font-size: 0.9rem; margin-top: 14px; }
+    .exp-banner {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #ebf8ff;
+      color: #2a4365;
+      border: 1px solid #bee3f8;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>&#128640; Sample Web App</h1>
+    <p>Routed through <strong>Traefik</strong> in Docker Compose</p>
+    <span class="badge badge-green">Frontend &#10003;</span>
+    <div id="release-meta" class="muted">Release: loading...</div>
+    <div id="exp-banner" class="exp-banner" style="display:none;">v2 feature banner enabled</div>
+
+    <div class="status-grid">
+      <div class="status-box">
+        <h3>Frontend</h3>
+        <span class="badge badge-green">Running</span>
+      </div>
+      <div class="status-box">
+        <h3>API</h3>
+        <span id="api-status" class="badge badge-yellow">Checking...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function setReleaseMeta(cfg) {
+      const meta = document.getElementById('release-meta');
+      meta.textContent = `Release: ${cfg.appRelease || 'n/a'} | Version: ${cfg.appVersion || 'n/a'}`;
+
+      const banner = document.getElementById('exp-banner');
+      if (cfg.featureBanner) {
+        banner.style.display = 'block';
+      }
+    }
+
+    fetch('config.json')
+      .then(r => r.json())
+      .then(cfg => {
+        setReleaseMeta(cfg);
+        return fetch(cfg.apiUrl + '/health');
+      })
+      .then(r => r.json())
+      .then(data => {
+        const el = document.getElementById('api-status');
+        el.textContent = data.status === 'ok' ? 'Running \u2713' : 'Degraded';
+        el.className = 'badge ' + (data.status === 'ok' ? 'badge-green' : 'badge-yellow');
+      })
+      .catch(() => {
+        const el = document.getElementById('api-status');
+        el.textContent = 'Unreachable';
+        el.className = 'badge badge-yellow';
+      });
+  </script>
+</body>
+</html>
