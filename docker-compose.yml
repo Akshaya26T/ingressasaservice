@@ -192,8 +192,8 @@ services:
     build:
       context: .
       args:
-        TARGETARCH: ${TARGETARCH}
-    image: ${IMAGE_REPO:-azdevopsdeploymentagent}:${VERSION}-${TARGETARCH}
+        TARGETARCH: ${TARGETARCH:-}
+    image: ${IMAGE_REPO:-azdevopsdeploymentagent}:${VERSION:-local}
     container_name: azdevops-agent
     restart: unless-stopped
     profiles:
@@ -204,9 +204,9 @@ services:
     volumes:
       - deploymentdevagent:/azagent
     environment:
-      - AZP_URL=${AZP_URL}
-      - AZP_TOKEN=${AZP_TOKEN}
-      - AZP_PROJECT=${AZP_PROJECT}
+      - AZP_URL=${AZP_URL:-}
+      - AZP_TOKEN=${AZP_TOKEN:-}
+      - AZP_PROJECT=${AZP_PROJECT:-}
       - AZP_ENVIRONMENT=${AZP_ENVIRONMENT:-development}
       - AZP_AGENT_NAME=${AZP_AGENT_NAME:-agent}
     networks:

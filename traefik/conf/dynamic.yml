@@ -68,6 +68,6 @@ http:
       weighted:
         services:
           - name: app1@docker              # stable: all replicas load-balanced equally
-            weight: 9                      # ~90% when canary weight is 1; adjust as canary ramps
+            weight: 0                      # ~90% when canary weight is 1; adjust as canary ramps
           - name: app1-canary@docker       # canary: receives weight/(stable+canary) % traffic
-            weight: 1                      # 0 = disabled; set to 1 for ~10%, 5 for ~50%, etc.
+            weight: 10                      # 0 = disabled; set to 1 for ~10%, 5 for ~50%, etc.
