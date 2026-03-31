@@ -65,6 +65,10 @@ stages:
             displayName: Publish logs artifact
             condition: always()
 
+          - publish: $(Build.SourcesDirectory)
+            artifact: source-drop
+            displayName: Publish source artifact
+
           - script: |
               export COMPOSE_PROJECT_NAME=$(composeProject)
               docker compose -f $(composeFile) down -v --remove-orphans
@@ -85,12 +89,17 @@ stages:
           runOnce:
             deploy:
               steps:
-                - checkout: self
+                - checkout: none
+
+                - download: current
+                  artifact: source-drop
+                  displayName: Download source artifact
 
                 - script: |
                     chmod +x check_canary_split.sh
                     chmod +x scripts/ci-smoke-test.sh
                   displayName: Make scripts executable
+                  workingDirectory: $(Pipeline.Workspace)/source-drop
 
                 - script: |
                     docker --version
@@ -103,6 +112,8 @@ stages:
                     docker compose -f $(composeFile) up -d --build
                     docker compose -f $(composeFile) ps
                   displayName: Deploy stack
+                  workingDirectory: $(Pipeline.Workspace)/source-drop
 
                 - script: scripts/ci-smoke-test.sh $(baseUrl)
                   displayName: Run post-deploy smoke tests
+                  workingDirectory: $(Pipeline.Workspace)/source-drop
