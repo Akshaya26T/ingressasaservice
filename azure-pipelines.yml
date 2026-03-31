@@ -14,8 +14,8 @@ variables:
   composeFile: docker-compose.yml
   composeProject: ingress-ci
   baseUrl: http://127.0.0.1:3000
-  deployEnabled: 'false'
-  deployPool: Default
+  deployEnabled: 'true'
+  deployPool: agent
 
 stages:
   - stage: CI
