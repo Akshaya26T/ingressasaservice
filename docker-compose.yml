@@ -207,7 +207,7 @@ services:
       - AZP_URL=${AZP_URL:-}
       - AZP_TOKEN=${AZP_TOKEN:-}
       - AZP_PROJECT=${AZP_PROJECT:-}
-      - AZP_ENVIRONMENT=${AZP_ENVIRONMENT:-development}
+      - AZP_ENVIRONMENT=${AZP_ENVIRONMENT:-ingressasaservice-dev}
       - AZP_AGENT_NAME=${AZP_AGENT_NAME:-agent}
     networks:
       - agent_network

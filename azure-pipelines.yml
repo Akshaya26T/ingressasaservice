@@ -15,7 +15,6 @@ variables:
   composeProject: ingress-ci
   baseUrl: http://127.0.0.1:3000
   deployEnabled: 'true'
-  deployPool: agent
 
 stages:
   - stage: CI
@@ -79,9 +78,9 @@ stages:
     jobs:
       - deployment: DeployComposeStack
         displayName: Deploy compose stack on self-hosted agent
-        pool:
-          name: $(deployPool)
-        environment: ingressasaservice-dev
+        environment:
+          name: ingressasaservice-dev
+          resourceType: VirtualMachine
         strategy:
           runOnce:
             deploy:
