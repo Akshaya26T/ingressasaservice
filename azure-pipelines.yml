@@ -15,6 +15,8 @@ variables:
   composeProject: ingress-ci
   baseUrl: http://127.0.0.1:3000
   deployEnabled: 'true'
+  deployPool: mac-agent-pool
+  deployAgentName: mac-build-agent
 
 stages:
   - stage: CI
@@ -76,44 +78,42 @@ stages:
             condition: always()
 
   - stage: CD
-    displayName: Deploy to environment
+    displayName: Deploy via self-hosted agent
     dependsOn: CI
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['deployEnabled'], 'true'))
     jobs:
-      - deployment: DeployComposeStack
-        displayName: Deploy compose stack on self-hosted agent
-        environment:
-          name: ingressasaservice-dev
-          resourceType: VirtualMachine
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: none
+      - job: DeployComposeStack
+        displayName: Deploy compose stack on mac-build-agent
+        pool:
+          name: $(deployPool)
+          demands:
+            - Agent.Name -equals $(deployAgentName)
+        steps:
+          - checkout: none
 
-                - download: current
-                  artifact: source-drop
-                  displayName: Download source artifact
+          - download: current
+            artifact: source-drop
+            displayName: Download source artifact
 
-                - script: |
-                    chmod +x check_canary_split.sh
-                    chmod +x scripts/ci-smoke-test.sh
-                  displayName: Make scripts executable
-                  workingDirectory: $(Pipeline.Workspace)/source-drop
+          - script: |
+              chmod +x check_canary_split.sh
+              chmod +x scripts/ci-smoke-test.sh
+            displayName: Make scripts executable
+            workingDirectory: $(Pipeline.Workspace)/source-drop
 
-                - script: |
-                    docker --version
-                    docker compose version
-                  displayName: Verify Docker on deployment agent
+          - script: |
+              docker --version
+              docker compose version
+            displayName: Verify Docker on deployment agent
 
-                - script: |
-                    export COMPOSE_PROJECT_NAME=ingressasaservice
-                    docker compose -f $(composeFile) pull || true
-                    docker compose -f $(composeFile) up -d --build
-                    docker compose -f $(composeFile) ps
-                  displayName: Deploy stack
-                  workingDirectory: $(Pipeline.Workspace)/source-drop
+          - script: |
+              export COMPOSE_PROJECT_NAME=ingressasaservice
+              docker compose -f $(composeFile) pull || true
+              docker compose -f $(composeFile) up -d --build
+              docker compose -f $(composeFile) ps
+            displayName: Deploy stack
+            workingDirectory: $(Pipeline.Workspace)/source-drop
 
-                - script: scripts/ci-smoke-test.sh $(baseUrl)
-                  displayName: Run post-deploy smoke tests
-                  workingDirectory: $(Pipeline.Workspace)/source-drop
+          - script: scripts/ci-smoke-test.sh $(baseUrl)
+            displayName: Run post-deploy smoke tests
+            workingDirectory: $(Pipeline.Workspace)/source-drop
