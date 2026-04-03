@@ -118,10 +118,44 @@ stages:
             displayName: Verify Docker on deployment agent
 
           - script: |
+              echo "Disk usage before deploy"
+              df -h /
+              docker system df || true
+
+              used_pct=$(df -Pk / | awk 'NR==2 {gsub(/%/, "", $5); print $5}')
+              if [ -n "$used_pct" ] && [ "$used_pct" -ge 95 ]; then
+                echo "Disk usage is ${used_pct}%, pruning unused Docker data"
+                docker system prune -af --volumes || true
+                docker builder prune -af || true
+                echo "Disk usage after prune"
+                df -h /
+                docker system df || true
+              fi
+            displayName: Preflight disk check
+
+          - script: |
+              export COMPOSE_PROJECT_NAME=ingressasaservice
+              docker compose -f $(composeFile) down --remove-orphans || true
+              docker rm -f traefik app2 app3 || true
+            displayName: Clean previous deployment state
+            workingDirectory: $(Pipeline.Workspace)/source-drop
+
+          - script: |
               export COMPOSE_PROJECT_NAME=ingressasaservice
               docker compose -f $(composeFile) pull || true
-              docker compose -f $(composeFile) up -d --build
+              if ! docker compose -f $(composeFile) up -d --build; then
+                echo "docker compose up failed"
+                docker compose -f $(composeFile) ps || true
+                docker compose -f $(composeFile) logs --no-color || true
+                exit 1
+              fi
               docker compose -f $(composeFile) ps
+
+              if ! docker compose -f $(composeFile) ps traefik | grep -q "Up"; then
+                echo "Traefik did not start successfully"
+                docker compose -f $(composeFile) logs --no-color traefik app1 app1-canary app2 app3 || true
+                exit 1
+              fi
             displayName: Deploy stack
             workingDirectory: $(Pipeline.Workspace)/source-drop
 
