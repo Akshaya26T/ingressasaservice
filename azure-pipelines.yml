@@ -131,12 +131,29 @@ stages:
                 df -h /
                 docker system df || true
               fi
+
+              used_pct=$(df -Pk / | awk 'NR==2 {gsub(/%/, "", $5); print $5}')
+              if [ -n "$used_pct" ] && [ "$used_pct" -ge 95 ]; then
+                echo "Disk usage remains critically high at ${used_pct}% before deployment"
+                echo "Free additional disk space on mac-build-agent before retrying this pipeline"
+                exit 1
+              fi
             displayName: Preflight disk check
 
           - script: |
               export COMPOSE_PROJECT_NAME=ingressasaservice
               docker compose -f $(composeFile) down --remove-orphans || true
               docker rm -f traefik app2 app3 || true
+              docker image rm \
+                sample-frontend:latest \
+                sample-frontend-canary:latest \
+                sample-api:latest \
+                sample-dashboard:latest || true
+              docker builder prune -af || true
+              docker image prune -af || true
+              echo "Disk usage after project cleanup"
+              df -h /
+              docker system df || true
             displayName: Clean previous deployment state
             workingDirectory: $(Pipeline.Workspace)/source-drop
 
